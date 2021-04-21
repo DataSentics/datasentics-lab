@@ -167,7 +167,7 @@ class DBPath:
     Initialization
 
     ```
-    from dbpathlib import DBPath
+    from dbpath import DBPath
 
     # provide dbutils instance
     DBPath.set_dbutils(dbutils)
