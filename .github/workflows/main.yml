@@ -1,0 +1,35 @@
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v1
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+      - name: Init environment
+        run: |
+          export POETRY_HTTP_BASIC_DATASENTICS_USERNAME="dummy"
+          export POETRY_HTTP_BASIC_DATASENTICS_PASSWORD=${{ secrets.AZURE_DEVOPS_PAT }}
+          curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py --silent -o get-poetry.py
+          python get-poetry.py -y --version 1.1.4
+          source $HOME/.poetry/env
+          poetry config virtualenvs.create false
+          poetry install --no-root
+      - name: Check coding standards
+        run: |
+          set -euo pipefail
+          source $HOME/.poetry/env
+          poe flake8
+          poe black-check
+      - name: Build package
+        run: |
+          source $HOME/.poetry/env
+          poetry build --format wheel
+      - name: Publish package
+        if: startsWith(github.event.head_commit.message, 'bump version to')
+        run: |
+          source $HOME/.poetry/env
+          poetry publish --repository datasentics --username "dummy" --password ${{ secrets.AZURE_DEVOPS_PAT }}
