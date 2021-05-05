@@ -5,153 +5,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from pyspark.sql.utils import IllegalArgumentException
-
-
-# ITERABLES EXTENSION - functions for getting specific elements from iterables, optimized for memory usage.
-# Meant for use non-indexable iterables
-
-def last(iterable):
-    iterator = iter(iterable)
-
-    while True:
-        try:
-            element = next(iterator)
-        except StopIteration as e:
-            return e
-
-    return element
-
-
-def nth(iterable, n):
-    iterator = iter(iterable)
-
-    for i in range(n + 1):
-        try:
-            element = next(iterator)
-        except StopIteration as e:
-            return e
-
-    return element
-
-
-def first(iterable):
-    return nth(iterable, 0)
-
-
-def second(iterable):
-    return nth(iterable, 0)
-
-
-def third(iterable):
-    return nth(iterable, 0)
-
-
-def ilen(iterable):
-    iterator = iter(iterable)
-
-    n = 0
-    while True:
-        try:
-            next(iterator)
-            n += 1
-        except StopIteration as e:
-            break
-
-    return n
-
-
-### GENERAL UTILS
-
-def randstr(n):
-    return binascii.b2a_hex(os.urandom(n // 2)).decode('utf-8')
-
-
-class _DBOpenContextManager:
-    """
-    ContextManager that wraps open() to work with data lake paths and dbapi paths in general
-    """
-
-    def __init__(self, dbutils, dbpath, mode, encoding):
-        self.dbutils = dbutils
-        self.dbpath = dbpath
-        self.mode = mode
-        self.encoding = encoding
-        self.localpath = '/tmp/' + randstr(30)
-
-    def __enter__(self):
-        self.dbutils.fs.mkdirs('file:/tmp/')
-
-        if 'r' in self.mode or 'a' in self.mode:
-            self.dbutils.fs.cp(self.dbpath, 'file:' + self.localpath, recurse=True)
-            remove_crc_files(self.localpath)
-
-        self.open_ctx = open(self.localpath, mode=self.mode, encoding=self.encoding)
-        return self.open_ctx.__enter__()
-
-    def __exit__(self, *args):
-        retval = self.open_ctx.__exit__(*args)
-
-        if not args[0] and ('a' in self.mode or 'w' in self.mode):
-            self.dbutils.fs.cp('file:' + self.localpath, self.dbpath, recurse=True)
-
-        self.dbutils.fs.rm('file:' + self.localpath, recurse=True)
-
-        return retval
-
-
-class _DBTempContextManager:
-    """
-    ContextManager that creates a temporary file or directory.
-    """
-    _TMP_PATHS = {
-        'dbfs': ':/tmp/',
-        'file': ':/tmp/'
-    }
-
-    @classmethod
-    def set_protocol_temp_path(cls, protocol, path):
-        """
-        sets the base temp path for a given protocol,
-        e.g. for protocol=='dbfs', path=':/tmp/', so protocol + path == 'dbfs:/tmp/'
-        """
-        cls._TMP_PATHS[protocol] = path
-
-    def __init__(self, protocol='dbfs', is_dir=False):
-        self.protocol = protocol
-        self.temppath = DBPath(protocol + self._TMP_PATHS[protocol] + randstr(30))
-        self.is_dir = is_dir
-
-    def __enter__(self):
-        if self.is_dir:
-            self.temppath.mkdirs()
-        else:
-            self.temppath.write('')
-
-        return self.temppath
-
-    def __exit__(self, *args):
-        self.temppath.rm(recurse=True)
-
-        if args[0]:
-            return
-
-
-def remove_crc_files(path):
-    """
-    Removes all HDFS checksum files in folder. This is necessary when you want
-    to copy a folder from HDFS to local, modify files and copy it back.
-    If the .crc files stay, the copy back fails because of checksum mismatch.
-    """
-    path = Path(path)
-    path_crc = path.parent / ('.' + path.name + '.crc')
-
-    if path_crc.exists():
-        os.remove(path_crc)
-
-    if path.is_dir():
-        for file in path.iterdir():
-            if file.exists() and not file.name.endswith('.crc'):
-                remove_crc_files(file)
+from src.dslab.iterable import first
 
 
 class DBPath:
@@ -167,13 +21,13 @@ class DBPath:
     Initialization
 
     ```
-    from dbpath import DBPath
+    from dbpathlib import DBPath
 
-    # provide dbutils instance
-    DBPath.set_dbutils(dbutils)
+    # provide spark session for dbutils instance
+    DBPath.set_spark_session(spark)
 
-    # set FileStore base download url for your dbx workspace 
-    DBPath.set_base_download_url('https://adb-1234.5.azuredatabricks.net/files/') 
+    # set FileStore base download url for your dbx workspace
+    DBPath.set_base_download_url('https://adb-1234.5.azuredatabricks.net/files/')
     ```
 
 
@@ -205,17 +59,19 @@ class DBPath:
     - write_bytes - writes bytes to the file
     - download_url - for FileStore records returns a direct download URL
     - make_download_url - copies a file to FileStore and returns a direct download URL
-    - backup - creates a backup copy in the same folder, named as {filename}[.extension] -> {filename}_YYYYMMDD_HHMMSS[.extension]
+    - backup - creates a backup copy in the same folder, named as
+      {filename}[.extension] -> {filename}_YYYYMMDD_HHMMSS[.extension]
     - restore - restore a previous backup
 
     CLASS METHODS:
 
     - clear_tmp_download_cache - clear all files created using make_download_url
-    - temp_file - returns a context manager with a temp file DBPath on a selected file system (default dbfs)
-    - temp_dir - returns a context manager with a temp dir DBPath on a selected file system (default dbfs)
-    - set_base_download_url - call once upon initialization, sets base url for filestore direct downloads (e.g. 'https://adb-1234.5.azuredatabricks.net/files/')
-    - set_dbutils - call once upon initialization for setting dbutils instance
-    - set_protocol_temp_path - call once upon initialization for each filesystem you want to create temp files/dirs in ('dbfs' and 'file' are set by default). 
+    - temp_file - context manager that returns a temporary DBPath
+    - set_base_download_url - call once upon initialization, sets base url for filestore direct downloads
+      (e.g. 'https://adb-1234.5.azuredatabricks.net/files/')
+    - set_spark_session - call once upon initialization for getting dbutils instance
+    - set_protocol_temp_path - call once upon initialization for each filesystem you want to create temp files/dirs in
+      ('dbfs' and 'file' are set by default).
 
     """
 
@@ -225,7 +81,7 @@ class DBPath:
 
     ### CLASS LEVEL VARIABLES
 
-    _download_url_base = None
+    _BASE_DOWNLOAD_URL = None
     _dbutils = None
 
     ### INIT
@@ -380,7 +236,6 @@ class DBPath:
                 DBPath._tree(child, indent + '   ')
 
     def tree(self):
-        print(f'tree {self.path}')
         self._tree(self)
 
     def cp(self, destination, recurse=False):
@@ -461,11 +316,13 @@ class DBPath:
         @param encoding as with open()
         @dtype str
 
-        @return open context manager that 
+        @return open context manager that
         @dtype ContextManager
         """
         return _DBOpenContextManager(self.dbutils, self.path, mode=mode, encoding=encoding)
 
+    @deprecated(
+        reason="please use read_text() and read_bytes() instead. This matches exactly the interface of patlib.Path")
     def read(self):
         with self.open() as f:
             return f.read()
@@ -478,6 +335,8 @@ class DBPath:
         with self.open('rb', None) as f:
             return f.read()
 
+    @deprecated(
+        reason="please use write_text() and write_bytes() instead. This matches exactly the interface of patlib.Path")
     def write(self, data, mode='t', encoding='utf-8'):
         with self.open('w' + mode, encoding) as f:
             f.write(data)
@@ -512,32 +371,31 @@ class DBPath:
             out_path = self.path + suffix
 
         print(f'backing up file {self.path}->{out_path}')
-        dbutils.fs.cp(self.path, out_path, recurse=True)
+        self.dbutils.fs.cp(self.path, out_path, recurse=True)
 
         return DBPath(out_path)
 
-    def restore(self, backup_path, overwrite=False):
+    def restore(self, timestamp, overwrite=False):
         """
         Restores a path from backup. Leaves the backup intact.
 
         In order to overwrite existing data, you have to set overwrite=True
+
+        timestamp='YYYYMMDD_HHMMSS'
         """
 
-        backup_path = DBPath(backup_path)
+        backup_path = self.parent / (self.name + '_' + timestamp)
+        if not backup_path.exists():
+            raise FileNotFoundError(f'path {backup_path} doesn\'t exist.')
 
-        match = re.match('^(.*)_[0-9]+_[0-9]+(\\.[a-zA-Z0-9]+)?$', backup_path.name)
-        if match.lastindex != 2:
-            raise ValueError(
-                f'path {backup_path} is not in the valid backup format of {{filename}}_YYYYMMDD_HHMMSS[.extension]')
-
-        restore_path = backup_path.parent / (match.group(1) + match.group(2))
-
-        if restore_path.exists() and not overwrite:
+        if self.exists() and not overwrite:
             raise ValueError(
                 f'File on restore path {restore_path} exists. Set overwrite=True to delete before restore.')
 
-        restore_path.rm(True)
-        backup_path.cp(restore_path, True)
+        print(f'restoring backup from {timestamp} to {self}.')
+
+        self.rm(True)
+        backup_path.cp(self, True)
 
     ### CLASS METHODS
 
@@ -546,8 +404,9 @@ class DBPath:
         cls._BASE_DOWNLOAD_URL = url
 
     @classmethod
-    def set_dbutils(cls, dbutils):
-        cls._dbutils = dbutils
+    def set_spark_session(cls, spark):
+        from pyspark.dbutils import DBUtils
+        cls._dbutils = DBUtils(spark)
 
     @classmethod
     def clear_tmp_download_cache(cls):
@@ -572,25 +431,7 @@ class DBPath:
         with DBPath.temp_file('dbfs') as dbpath:
             ....
         """
-        return _DBTempContextManager(protocol, is_dir=False)
-
-    @classmethod
-    def temp_dir(cls, protocol='dbfs'):
-        """
-        Creates a directory in tmp folder of given filesystem and returns a context manager
-
-        @param filesystem: 'file' or 'dbfs' (for others, add default temp paths using set_protocol_temp_path)
-        @dtype: str
-
-        @return context manager
-
-        with DBPath.temp_dir('file') as dbpath:
-            ....
-
-        with DBPath.temp_dir('dbfs') as dbpath:
-            ....
-        """
-        return _DBTempContextManager(protocol, is_dir=True)
+        return _DBTempContextManager(protocol)
 
     @classmethod
     def set_protocol_temp_path(cls, protocol, path):
@@ -599,3 +440,90 @@ class DBPath:
         e.g. for protocol=='dbfs', path=':/tmp/', so protocol + path == 'dbfs:/tmp/'
         """
         _DBTempContextManager.set_protocol_temp_path(protocol, path)
+
+
+class _DBOpenContextManager:
+    """
+    ContextManager that wraps open() to work with data lake paths and dbapi paths in general
+    """
+
+    def __init__(self, dbutils, dbpath, mode, encoding):
+        self.dbutils = dbutils
+        self.dbpath = dbpath
+        self.mode = mode
+        self.encoding = encoding
+        self.localpath = '/tmp/' + randstr(30)
+
+    def __enter__(self):
+        self.dbutils.fs.mkdirs('file:/tmp/')
+
+        if 'r' in self.mode or 'a' in self.mode:
+            self.dbutils.fs.cp(self.dbpath, 'file:' + self.localpath, recurse=True)
+            remove_crc_files(self.localpath)
+
+        self.open_ctx = open(self.localpath, mode=self.mode, encoding=self.encoding)
+        return self.open_ctx.__enter__()
+
+    def __exit__(self, *args):
+        retval = self.open_ctx.__exit__(*args)
+
+        if not args[0] and ('a' in self.mode or 'w' in self.mode):
+            self.dbutils.fs.cp('file:' + self.localpath, self.dbpath, recurse=True)
+
+        self.dbutils.fs.rm('file:' + self.localpath, recurse=True)
+
+        return retval
+
+
+class _DBTempContextManager:
+    """
+    ContextManager that creates a temporary path - it doesn't create any files
+    """
+    _TMP_PATHS = {
+        'dbfs': ':/tmp/',
+        'file': ':/tmp/'
+    }
+
+    @classmethod
+    def set_protocol_temp_path(cls, protocol, path):
+        """
+        sets the base temp path for a given protocol,
+        e.g. for protocol=='dbfs', path=':/tmp/', so protocol + path == 'dbfs:/tmp/'
+        """
+        cls._TMP_PATHS[protocol] = path
+
+    def __init__(self, protocol='dbfs'):
+        self.protocol = protocol
+        self.temppath = DBPath(protocol + self._TMP_PATHS[protocol] + randstr(30))
+
+    def __enter__(self):
+        return self.temppath
+
+    def __exit__(self, *args):
+        if self.temppath.exists():
+            self.temppath.rm(recurse=True)
+
+        if args[0]:
+            return
+
+
+def remove_crc_files(path):
+    """
+    Removes all HDFS checksum files in folder. This is necessary when you want
+    to copy a folder from HDFS to local, modify files and copy it back.
+    If the .crc files stay, the copy back fails because of checksum mismatch.
+    """
+    path = Path(path)
+    path_crc = path.parent / ('.' + path.name + '.crc')
+
+    if path_crc.exists():
+        os.remove(path_crc)
+
+    if path.is_dir():
+        for file in path.iterdir():
+            if file.exists() and not file.name.endswith('.crc'):
+                remove_crc_files(file)
+
+
+def randstr(n):
+    return binascii.b2a_hex(os.urandom(n // 2)).decode('utf-8')
