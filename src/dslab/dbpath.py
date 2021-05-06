@@ -5,7 +5,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 from pyspark.sql.utils import IllegalArgumentException
-from src.dslab.iterable import first
 
 
 class DBPath:
@@ -61,7 +60,7 @@ class DBPath:
     - make_download_url - copies a file to FileStore and returns a direct download URL
     - backup - creates a backup copy in the same folder, named as
       {filename}[.extension] -> {filename}_YYYYMMDD_HHMMSS[.extension]
-    - restore - restore a previous backup
+    - restore - restore a previous backup of this file by passing backup timestamp string ('YYYYMMDD_HHMMSS')
 
     CLASS METHODS:
 
@@ -110,7 +109,7 @@ class DBPath:
             return DBPath(self.path + '/' + path)
 
     def __cmp__(self, other):
-        return cmp(self.path, other.path)
+        return self.path.__cmp__(other.path)
 
     def __lt__(self, other):
         return self.path < other.path
@@ -149,7 +148,7 @@ class DBPath:
     @property
     def _parts(self):
         # for dbfs:/FileStore/file.txt returns ['dbfs', ':/',  'FileStore/file.txt']
-        separator_match = first(re.finditer('(:/+)', self.path))
+        separator_match = list(re.finditer('(:/+)', self.path))[0]
 
         start, end = separator_match.span()
 
@@ -254,7 +253,7 @@ class DBPath:
         if not self.is_dir():
             raise ValueError(f'Not a directory: {self.path}')
 
-        dbpaths = [DBPath(record.path) for record in dbutils.fs.ls(self.path)]
+        dbpaths = [DBPath(record.path) for record in self.dbutils.fs.ls(self.path)]
 
         for path in sorted(dbpaths):
             yield path
@@ -321,12 +320,6 @@ class DBPath:
         """
         return _DBOpenContextManager(self.dbutils, self.path, mode=mode, encoding=encoding)
 
-    @deprecated(
-        reason="please use read_text() and read_bytes() instead. This matches exactly the interface of patlib.Path")
-    def read(self):
-        with self.open() as f:
-            return f.read()
-
     def read_text(self, encoding=None):
         with self.open('rt', encoding) as f:
             return f.read()
@@ -334,12 +327,6 @@ class DBPath:
     def read_bytes(self):
         with self.open('rb', None) as f:
             return f.read()
-
-    @deprecated(
-        reason="please use write_text() and write_bytes() instead. This matches exactly the interface of patlib.Path")
-    def write(self, data, mode='t', encoding='utf-8'):
-        with self.open('w' + mode, encoding) as f:
-            f.write(data)
 
     def write_text(self, text, encoding=None):
         with self.open('wt', encoding) as f:
@@ -390,7 +377,7 @@ class DBPath:
 
         if self.exists() and not overwrite:
             raise ValueError(
-                f'File on restore path {restore_path} exists. Set overwrite=True to delete before restore.')
+                f'File on restore path {self.path} exists. Set overwrite=True to delete before restore.')
 
         print(f'restoring backup from {timestamp} to {self}.')
 
