@@ -12,19 +12,6 @@ jobs:
           python-version: 3.7
       - name: Install Poetry
         uses: snok/install-poetry@v1.1.4
-#        run:
-#          source $HOME/.poetry/env
-#      - name: Init environment
-#        run: |
-#          poetry config virtualenvs.create false
-#          poetry install --no-root
-#      - name: Check coding standards
-#        run: |
-#          set -euo pipefail
-#          source $HOME/.poetry/env
-#          poe flake8
-#          poe black-check
-
       - name: Build package
         run: |
           poetry build --format wheel

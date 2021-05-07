@@ -1,0 +1,21 @@
+on: [push]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v2
+      - with:
+          python-version: 3.7
+      - name: Install Poetry
+        uses: snok/install-poetry@v1.1.4
+      - name: Init Environment
+        run:
+          poetry config virtualenvs.create false
+          poetry install --no-root
+      - name: Flake8 and black-check
+        run:
+          poe flake8
+          poe black-check
