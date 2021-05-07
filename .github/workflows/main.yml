@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.event.head_commit.message, 'release')
     steps:
-#      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
       - name: Set up Python 3.7
         uses: actions/setup-python@v2
         with:
@@ -24,6 +24,7 @@ jobs:
 #          source $HOME/.poetry/env
 #          poe flake8
 #          poe black-check
+
       - name: Build package
         run: |
           poetry build --format wheel
