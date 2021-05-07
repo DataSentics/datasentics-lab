@@ -12,10 +12,12 @@ jobs:
           python-version: 3.7
       - name: Install Poetry
         uses: snok/install-poetry@v1.1.4
-      - name: Init environment
-        run: |
-          poetry config virtualenvs.create false
-          poetry install --no-root
+#        run:
+#          source $HOME/.poetry/env
+#      - name: Init environment
+#        run: |
+#          poetry config virtualenvs.create false
+#          poetry install --no-root
 #      - name: Check coding standards
 #        run: |
 #          set -euo pipefail
