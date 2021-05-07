@@ -11,25 +11,26 @@ jobs:
           python-version: 3.7
       - name: Init environment
         run: |
-          export POETRY_HTTP_BASIC_DATASENTICS_USERNAME="dummy"
-          export POETRY_HTTP_BASIC_DATASENTICS_PASSWORD=${{ secrets.AZURE_DEVOPS_PAT }}
           curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py --silent -o get-poetry.py
           python get-poetry.py -y --version 1.1.4
           source $HOME/.poetry/env
           poetry config virtualenvs.create false
           poetry install --no-root
-      - name: Check coding standards
-        run: |
-          set -euo pipefail
-          source $HOME/.poetry/env
-          poe flake8
-          poe black-check
+#      - name: Check coding standards
+#        run: |
+#          set -euo pipefail
+#          source $HOME/.poetry/env
+#          poe flake8
+#          poe black-check
       - name: Build package
         run: |
           source $HOME/.poetry/env
           poetry build --format wheel
+      - name: Publish package to private repo
+        run: |
+          poetry publish --repository datasentics --username "dummy" --password ${{ secrets.AZURE_DEVOPS_PAT }}
       - name: Publish package
-        if: startsWith(github.event.head_commit.message, 'bump version to')
+        if: startsWith(github.event.head_commit.message, 'release')
         run: |
           source $HOME/.poetry/env
-          poetry publish --repository datasentics --username "dummy" --password ${{ secrets.AZURE_DEVOPS_PAT }}
+          poetry publish --username "__token__" --password ${{ secrets.PYPI_API_TOKEN }}
