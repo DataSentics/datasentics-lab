@@ -38,6 +38,10 @@ pyspark = "^3.0.0"
 [tool.black]
 line-length = 140
 
+[build-system]
+requires = ["poetry>=1.0.0"]
+build-backend = "poetry.masonry.api"
+
 [tool.poe.tasks]
 black = "black src"
 black-check = "black --check src"
