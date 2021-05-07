@@ -1,19 +1,19 @@
 on: [push]
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    if: startsWith(github.event.head_commit.message, 'release')
     steps:
-      - uses: actions/checkout@v1
+#      - uses: actions/checkout@v1
       - name: Set up Python 3.7
         uses: actions/setup-python@v2
         with:
           python-version: 3.7
+      - name: Install Poetry
+        uses: snok/install-poetry@v1.1.4
       - name: Init environment
         run: |
-          curl -sSL https://raw.githubusercontent.com/sdispater/poetry/master/get-poetry.py --silent -o get-poetry.py
-          python get-poetry.py -y --version 1.1.4
-          source $HOME/.poetry/env
           poetry config virtualenvs.create false
           poetry install --no-root
 #      - name: Check coding standards
@@ -24,13 +24,7 @@ jobs:
 #          poe black-check
       - name: Build package
         run: |
-          source $HOME/.poetry/env
           poetry build --format wheel
-      - name: Publish package to private repo
+      - name: Publish package to pypi.org
         run: |
-          poetry publish --repository datasentics --username "dummy" --password ${{ secrets.AZURE_DEVOPS_PAT }}
-      - name: Publish package
-        if: startsWith(github.event.head_commit.message, 'release')
-        run: |
-          source $HOME/.poetry/env
           poetry publish --username "__token__" --password ${{ secrets.PYPI_API_TOKEN }}
