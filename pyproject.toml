@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "datasentics-lab"
-version = "0.0.1"
+version = "0.0.2"
 description = "DataSentics Lab - experimental open-source repo"
 readme = "README.md"
 repository = "https://github.com/DataSentics/datasentics-lab"
