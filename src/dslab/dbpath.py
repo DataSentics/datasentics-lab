@@ -16,6 +16,9 @@ class DBPath:
     path = DBPath('abfss://...')
     path = DBPath('dbfs:/...')
     path = DBPath('file:/...')
+    path = DBPath('s3:/...')
+    path = DBPath('s3a:/...')
+    path = DBPath('s3n:/...')
 
     Initialization
 
@@ -36,7 +39,7 @@ class DBPath:
     - name - just the filename (last part of path)
     - parent - the parent (DBPath)
     - children - sorted list of children files (list(DBPath)), empty list for non-folders
-    - in_local, in_dbfs, in_filestore, in_lake - predicates for location of file
+    - in_local, in_dbfs, in_filestore, in_lake, in_bucket - predicates for location of file
 
 
     BASE METHODS:
@@ -178,6 +181,10 @@ class DBPath:
     @property
     def in_lake(self):
         return self.protocol == 'abfss'
+
+    @property
+    def in_bucket(self):
+        return bool(re.match('^s3[na]?$', self.protocol))
 
     @property
     def dbutils(self):
