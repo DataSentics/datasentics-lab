@@ -220,6 +220,8 @@ class DBPath:
         bool
             True if path exists
         """
+        self.dbutils
+
         try:
             self.dbutils.fs.ls(self.path)
             return True
@@ -247,7 +249,10 @@ class DBPath:
 
         print(f"ls {self.path}")
         records = self.dbutils.fs.ls(self.path)
-        max_name_len = max([len(record.name) for record in records])
+        if len(records) == 0:
+            max_name_len = len("(empty directory)")
+        else:
+            max_name_len = max([len(record.name) for record in records])
 
         template = f"{{name:<{max_name_len + 10}}}{{size:>10}}"
 
@@ -262,6 +267,9 @@ class DBPath:
                 print(template.format(name=record.name, size=f"{record.size / 1024 ** 2:.2f} MB"))
             else:
                 print(template.format(name=record.name, size=f"{record.size / 1024 ** 3:.2f} GB"))
+
+        if len(records) == 0:
+            print("(empty directory)")
 
     @staticmethod
     def _tree(file, indent="", remaining_depth=5, max_files_per_dir=50):
@@ -520,12 +528,12 @@ class DBPath:
         if len(split) > 1:  # has extension
             prefix = ".".join(split[:-1])
             extension = split[-1]
-            out_path = prefix + suffix + "." + extension
+            out_path = self.parent / (prefix + suffix + "." + extension)
         else:
             out_path = self.path + suffix
 
         print(f"backing up file {self.path}->{out_path}")
-        self.dbutils.fs.cp(self.path, out_path, recurse=True)
+        self.cp(out_path, recurse=True)
 
         return DBPath(out_path)
 
@@ -541,7 +549,15 @@ class DBPath:
             set True to overwrite existing path
         """
 
-        backup_path = self.parent / (self.name + "_" + timestamp)
+        split = self.name.split(".")
+        suffix = f'_{timestamp}'
+        if len(split) > 1:  # has extension
+            prefix = ".".join(split[:-1])
+            extension = split[-1]
+            backup_path = self.parent / (prefix + suffix + "." + extension)
+        else:
+            backup_path = self.path + suffix
+
         if not backup_path.exists():
             raise FileNotFoundError(f"path {backup_path} doesn't exist.")
 
