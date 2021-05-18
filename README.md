@@ -97,7 +97,8 @@ BASE METHODS:
 exists() - returns True if file exists
 is_dir() - returns True if file exists and is a directory
 ls() - prints human readable list of contained files for folders, with file sizes
-tree(max_depth=5) - prints the directory structure, up to `max_depth`
+tree(max_depth=5, max_files_per_dir=50) - prints the directory structure, up to `max_depth` and 
+        `max_files_per_dir` files in each directory
 cp(destination, recurse=False) - same as dbutils.fs.cp(str(self), str(destination), recurse)
 rm(recurse=False) - same as dbutils.fs.rm(str(self), recurse)
 mkdirs() - same as dbutils.fs.mkdirs(str(self))
