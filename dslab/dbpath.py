@@ -32,7 +32,7 @@ class DBPath:
     set FileStore base download url for your dbx workspace
     >>> DBPath.set_base_download_url('https://adb-1234.5.azuredatabricks.net/files/')
     ```
-    
+
 
     PROPERTIES:
 
@@ -48,7 +48,7 @@ class DBPath:
     exists() - returns True if file exists
     is_dir() - returns True if file exists and is a directory
     ls() - prints human readable list of contained files for folders, with file sizes
-    tree(max_depth=5) - prints the directory structure, up to `max_depth`
+    tree(max_depth=5, max_files_per_dir=50) - prints the directory structure, up to `max_depth`
     cp(destination, recurse=False) - same as dbutils.fs.cp(str(self), str(destination), recurse)
     rm(recurse=False) - same as dbutils.fs.rm(str(self), recurse)
     mkdirs() - same as dbutils.fs.mkdirs(str(self))
@@ -143,7 +143,7 @@ class DBPath:
 
     @property
     def name(self):
-        return self._path_parts[-1]
+        return self._path_parts[-1] if len(self._path_parts) else ''
 
     @property
     def protocol(self):
@@ -209,7 +209,8 @@ class DBPath:
         if self._dbutils is not None:
             return self._dbutils
 
-        raise ValueError("Spark session has not been assigned yet. Call DBUtils.set_spark_session(spark) in your " "initialization.")
+        raise ValueError(
+            "Spark session has not been assigned yet. Call DBUtils.set_spark_session(spark) in your " "initialization.")
 
     ### BASE METHODS
     def exists(self):
@@ -263,25 +264,27 @@ class DBPath:
                 print(template.format(name=record.name, size=f"{record.size / 1024 ** 3:.2f} GB"))
 
     @staticmethod
-    def _tree(file, indent="", remaining_depth=5):
-        print(f"{indent} - {file.name}")
-        if file.is_dir():
-            if remaining_depth == 0:
-                print(" (*collapsed)", end="")
+    def _tree(file, indent="", remaining_depth=5, max_files_per_dir=50):
+        print(f"{indent} - {file.name} {'(*collapsed)' if file.is_dir() and remaining_depth == 0 else ''}")
+        if file.is_dir() and remaining_depth > 0:
+            for i, child in enumerate(file.iterdir()):
+                if i == max_files_per_dir:
+                    print(f"{indent}    - ...")
+                    break
+                DBPath._tree(child, indent + "   ", remaining_depth - 1, max_files_per_dir)
 
-            for child in file.iterdir():
-                DBPath._tree(child, indent + "   ", remaining_depth - 1)
-
-    def tree(self, max_depth=5):
+    def tree(self, max_depth=5, max_files_per_dir=50):
         """
         Prints out the hierarchical directory structure up to `max_depth` layers
 
         Parameters
         ----------
         max_depth : int
-            the maximum depth to which print out the directory structure
+            the maximum depth to which print out the directory structure (default is 5)
+        max_files_per_dir : int
+            the maximum number of files to print out in a folder (default is 50)
         """
-        self._tree(self, remaining_depth=max_depth)
+        self._tree(self, remaining_depth=max_depth, max_files_per_dir=max_files_per_dir)
 
     def cp(self, destination, recurse=False):
         """
