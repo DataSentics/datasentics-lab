@@ -80,6 +80,8 @@ class DBPath:
     ### CONSTANTS
 
     _CACHE_PREFIX = 'DBPath_cache_'
+    _KNOWN_PROTOCOLS = ['dbfs', 'file', 'abfss', 's3', 's3a', 's3n']
+    _KNOWN_PROTOCOL_REGEX = '^(' + '|'.join(_KNOWN_PROTOCOLS) + '):.*$'
 
     ### CLASS LEVEL VARIABLES
 
@@ -95,7 +97,16 @@ class DBPath:
         @param path: DB API path, e.g. 'file:/tmp/abc', 'dbfs:/FileStore/file.txt', 'abfss://lakepath/folder'
         @dtype str
         """
-        self._path = str(path)
+
+        path = str(path)
+
+        if path.startswith('/'):
+            path = 'file:' + path
+
+        if not re.match(self._KNOWN_PROTOCOL_REGEX, path):
+            raise ValueError(f'Unknown protocol for path {path}. Known protocols: {self._KNOWN_PROTOCOLS}')
+
+        self._path = path
 
     ### OVERRIDDEN FUNCTIONS
 
@@ -103,13 +114,13 @@ class DBPath:
         return self.path
 
     def __repr__(self):
-        return f'DBPath(\'{self.path}\')'
+        return f"DBPath('{self.path}')"
 
     def __truediv__(self, path):
-        if self.path.endswith('/'):
+        if self.path.endswith("/"):
             return DBPath(self.path + path)
         else:
-            return DBPath(self.path + '/' + path)
+            return DBPath(self.path + "/" + path)
 
     def __cmp__(self, other):
         return self.path.__cmp__(other.path)
@@ -191,22 +202,16 @@ class DBPath:
         if self._dbutils is not None:
             return self._dbutils
 
-        raise ValueError(
-            'Spark session has not been assigned yet. Call DBUtils.set_spark_session(spark) in your initialization.')
+        raise ValueError("Spark session has not been assigned yet. Call DBUtils.set_spark_session(spark) in your "
+                         "initialization.")
 
     ### BASE METHODS
-
     def exists(self):
         try:
-            self.dbutils.fs.head(self.path)
-            return True
-        except IllegalArgumentException as e:  # this is thrown for folders
+            self.dbutils.fs.ls(self.path)
             return True
         except Exception as e:
-            if re.findall(re.escape('java.io.FileNotFoundException:'), str(e)):
-                return False
-            else:
-                raise e
+            return False
 
     def is_dir(self):
         if not self.exists():
@@ -235,14 +240,25 @@ class DBPath:
                 print(template.format(name=record.name, size=f'{record.size / 1024 ** 3:.2f} GB'))
 
     @staticmethod
-    def _tree(file, indent=''):
-        print(f'{indent} - {file.name}')
+    def _tree(file, indent="", remaining_depth=5):
+        print(f"{indent} - {file.name}")
         if file.is_dir():
-            for child in file.iterdir():
-                DBPath._tree(child, indent + '   ')
+            if remaining_depth == 0:
+                print(' (*collapsed)', end='')
 
-    def tree(self):
-        self._tree(self)
+            for child in file.iterdir():
+                DBPath._tree(child, indent + "   ", remaining_depth - 1)
+
+    def tree(self, max_depth=5):
+        """
+        Prints out the hierarchical directory structure up to `max_depth` layers
+
+        Parameters
+        ----------
+        max_depth : int
+            the maximum depth to which print out the directory structure
+        """
+        self._tree(self, remaining_depth=max_depth)
 
     def cp(self, destination, recurse=False):
         self.dbutils.fs.cp(self.path, str(destination), recurse=recurse)
@@ -258,19 +274,19 @@ class DBPath:
         If this is a folder, returns a sorted generator over contained files (DBPath instances)
         """
         if not self.is_dir():
-            raise ValueError(f'Not a directory: {self.path}')
+            raise ValueError(f"Not a directory: {self.path}")
 
         dbpaths = [DBPath(record.path) for record in self.dbutils.fs.ls(self.path)]
 
         for path in sorted(dbpaths):
             yield path
 
-    def reiterdir(self, regexp):
+    def reiterdir(self, regex):
         """
         If this is a folder, returns a generator over contained files (DBPath instances) that match regexp
         """
         for file in self.iterdir():
-            if re.findall(regexp, file.name):
+            if re.findall(regex, file.name):
                 yield file
 
     ### I/O FUNCTIONS
@@ -289,10 +305,10 @@ class DBPath:
             raise ValueError(
                 f'path has to start with "dbfs:/FileStore/". Use .make_download_url() for automatic copy to FileStore and link.')
 
-        return self._BASE_DOWNLOAD_URL + self.path.replace('dbfs:/FileStore/', '')
+        return self._BASE_DOWNLOAD_URL + self.path.replace("dbfs:/FileStore/", "")
 
     def _make_tmp_folder_name(self):
-        return self._CACHE_PREFIX + randstr(10)
+        return self._CACHE_PREFIX + _randstr(10)
 
     def make_download_url(self):
         """
@@ -339,9 +355,18 @@ class DBPath:
         with self.open('wt', encoding) as f:
             f.write(text)
 
-    def write_bytes(self, bytes):
-        with self.open('wb', None) as f:
-            f.write(bytes)
+    def write_bytes(self, bytedata):
+        """
+        Writes bytes to path.
+
+        Parameters
+        ----------
+        bytedata : bytes
+            contents to be written
+
+        """
+        with self.open("wb", None) as f:
+            f.write(bytedata)
 
     def backup(self):
         """
@@ -446,14 +471,14 @@ class _DBOpenContextManager:
         self.dbpath = dbpath
         self.mode = mode
         self.encoding = encoding
-        self.localpath = '/tmp/' + randstr(30)
+        self.localpath = "/tmp/" + _randstr(30)
 
     def __enter__(self):
         self.dbutils.fs.mkdirs('file:/tmp/')
 
-        if 'r' in self.mode or 'a' in self.mode:
-            self.dbutils.fs.cp(self.dbpath, 'file:' + self.localpath, recurse=True)
-            remove_crc_files(self.localpath)
+        if "r" in self.mode or "a" in self.mode:
+            self.dbutils.fs.cp(self.dbpath, "file:" + self.localpath, recurse=True)
+            _remove_crc_files(self.localpath)
 
         self.open_ctx = open(self.localpath, mode=self.mode, encoding=self.encoding)
         return self.open_ctx.__enter__()
@@ -473,10 +498,8 @@ class _DBTempContextManager:
     """
     ContextManager that creates a temporary path - it doesn't create any files
     """
-    _TMP_PATHS = {
-        'dbfs': ':/tmp/',
-        'file': ':/tmp/'
-    }
+
+    _TMP_PATHS = {"dbfs": ":/tmp/", "file": ":/tmp/"}
 
     @classmethod
     def set_protocol_temp_path(cls, protocol, path):
@@ -488,7 +511,7 @@ class _DBTempContextManager:
 
     def __init__(self, protocol='dbfs'):
         self.protocol = protocol
-        self.temppath = DBPath(protocol + self._TMP_PATHS[protocol] + randstr(30))
+        self.temppath = DBPath(protocol + self._TMP_PATHS[protocol] + _randstr(30))
 
     def __enter__(self):
         return self.temppath
@@ -501,7 +524,7 @@ class _DBTempContextManager:
             return
 
 
-def remove_crc_files(path):
+def _remove_crc_files(path):
     """
     Removes all HDFS checksum files in folder. This is necessary when you want
     to copy a folder from HDFS to local, modify files and copy it back.
@@ -515,9 +538,9 @@ def remove_crc_files(path):
 
     if path.is_dir():
         for file in path.iterdir():
-            if file.exists() and not file.name.endswith('.crc'):
-                remove_crc_files(file)
+            if file.exists() and not file.name.endswith(".crc"):
+                _remove_crc_files(file)
 
 
-def randstr(n):
-    return binascii.b2a_hex(os.urandom(n // 2)).decode('utf-8')
+def _randstr(n):
+    return binascii.b2a_hex(os.urandom(n // 2)).decode("utf-8")
