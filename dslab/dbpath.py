@@ -23,7 +23,7 @@ class DBPath:
     Initialization
 
     ```
-    >>> from dslab.dbpath import DBPath
+    >>> from dslab import DBPath
 
     Provide spark session for dbutils instance
     >>> DBPath.set_spark_session(spark)
