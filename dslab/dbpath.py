@@ -20,7 +20,8 @@ class DBPath:
     >>> path = DBPath('s3a:/...')
     >>> path = DBPath('s3n:/...')
 
-    Initialization
+
+    INITIALIZATION:
 
     ```
     >>> from dslab import DBPath
@@ -31,6 +32,7 @@ class DBPath:
     set FileStore base download url for your dbx workspace
     >>> DBPath.set_base_download_url('https://adb-1234.5.azuredatabricks.net/files/')
     ```
+    
 
     PROPERTIES:
 
@@ -53,6 +55,7 @@ class DBPath:
     iterdir() - sorted generator over files (also DBPath instances) - similar to Path.iterdir()
     reiterdir(regex) - sorted generator over files (DBPath) that match `bool(re.findall(regex, file))`
 
+
     IO METHODS:
 
     open(method='rt', encoding='utf-8') - context manager for working with any DB API file locally
@@ -65,6 +68,7 @@ class DBPath:
     backup() - creates a backup copy in the same folder, named by following convention
         {filename}[.extension] -> {filename}_YYYYMMDD_HHMMSS[.extension]
     restore(timestamp) - restore a previous backup of this file by passing backup timestamp string (`'YYYYMMDD_HHMMSS'`)
+
 
     CLASS METHODS:
 
